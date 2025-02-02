@@ -4,3 +4,7 @@
 # JUCE Files
 Builds
 JuceLibraryCode
+
+# Misc
+AutoFreezePluginHostGraph.filtergraph
+
