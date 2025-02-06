@@ -27,21 +27,53 @@ AutoFreezeAudioProcessorEditor::~AutoFreezeAudioProcessorEditor()
 void AutoFreezeAudioProcessorEditor::paint (juce::Graphics& g)
 {
     // (Our component is opaque, so we must completely fill the background with a solid colour)
-    g.fillAll (getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId));
+    g.fillAll(getLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId));
 
-    g.setColour (juce::Colours::white);
-    g.setFont (juce::FontOptions (15.0f));
-    g.drawFittedText ("RMS: " + juce::String(displayRms, 2), getLocalBounds(), juce::Justification::centred, 1);
+    // Add level text
+    g.setColour(juce::Colours::wheat);
+    g.setFont(juce::FontOptions (15.0f));
+    g.drawText(juce::String(displayLevel, 2), levelTextRect, juce::Justification::centred, 1);
+    
+    // Draw meter level
+    g.setColour(juce::Colours::thistle);
+    g.fillRect(meterLevelRect);
+    
+    // Draw meter bounding box
+    g.setColour(juce::Colours::wheat);
+    g.drawRect(meterBoundsRect);
 }
 
 void AutoFreezeAudioProcessorEditor::resized()
 {
     // This is generally where you'll want to lay out the positions of any
     // subcomponents in your editor..
+    
+    // Position the meter
+    int meterWidth = 50;
+    int meterHeight = 200;
+    int meterX = (getWidth() - meterWidth) / 2;
+    int meterY = (getHeight() - meterHeight) / 2;
+    meterBoundsRect.setBounds(meterX, meterY, meterWidth, meterHeight);
+    
+    // Position the level text
+    int levelTextWidth = 100;
+    int levelTextHeight = 20;
+    int levelTextX = meterBoundsRect.getCentreX() - levelTextWidth / 2;
+    int levelTextY = meterBoundsRect.getY() - levelTextHeight;
+    levelTextRect.setBounds(levelTextX, levelTextY, levelTextWidth, levelTextHeight);
+    
 }
 
 void AutoFreezeAudioProcessorEditor::timerCallback()
 {
-    displayRms = audioProcessor.getRms();
+    displayLevel = audioProcessor.getDbLevel();
+    
+    // Calculate meter level position
+    int meterLevelX = meterBoundsRect.getX();
+    int meterLevelY = meterBoundsRect.getY();
+    int meterLevelWidth = meterBoundsRect.getWidth();
+    int meterLevelHeight = meterBoundsRect.getHeight();
+    meterLevelRect.setBounds(meterLevelX, meterLevelY, meterLevelWidth, meterLevelHeight);
+    
     repaint();
 }

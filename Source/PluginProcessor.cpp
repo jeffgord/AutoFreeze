@@ -150,14 +150,15 @@ void AutoFreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // the samples and the outer loop is handling the channels.
     // Alternatively, you can process the samples with the channels
     // interleaved by keeping the same state.
-    float sumRMS = 0.0f;
+    float sumRms = 0.0f;
     
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
-        sumRMS += buffer.getRMSLevel(channel, 0, buffer.getNumSamples());
+        sumRms += buffer.getRMSLevel(channel, 0, buffer.getNumSamples());
     }
     
-    rms = sumRMS / totalNumInputChannels;
+    float rms = sumRms / totalNumInputChannels;
+    dbLevel = juce::Decibels::gainToDecibels(rms);
 }
 
 //==============================================================================

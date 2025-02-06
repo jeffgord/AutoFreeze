@@ -54,11 +54,11 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
     
     //==============================================================================
-    float getRms() const { return rms; }
+    float getDbLevel() const { return dbLevel; }
 
 private:
     //==============================================================================
-    float rms = 0.0f;
+    float dbLevel = 0.0f;
     
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AutoFreezeAudioProcessor)

@@ -29,7 +29,11 @@ private:
     // This reference is provided as a quick way for your editor to
     // access the processor object that created it.
     AutoFreezeAudioProcessor& audioProcessor;
-    float displayRms = 0.0f;
+    float displayLevel = 0.0f;
+    
+    juce::Rectangle<float> levelTextRect;
+    juce::Rectangle<float> meterBoundsRect;
+    juce::Rectangle<float> meterLevelRect;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AutoFreezeAudioProcessorEditor)
 };
