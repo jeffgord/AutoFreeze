@@ -32,7 +32,7 @@ void AutoFreezeAudioProcessorEditor::paint (juce::Graphics& g)
     // Add level text
     g.setColour(juce::Colours::wheat);
     g.setFont(juce::FontOptions (15.0f));
-    g.drawText(juce::String(displayLevel, 2), levelTextRect, juce::Justification::centred, 1);
+    g.drawText(juce::String(displayDbLevel, 2), levelTextRect, juce::Justification::centred, 1);
     
     // Draw meter level
     g.setColour(juce::Colours::thistle);
@@ -66,14 +66,15 @@ void AutoFreezeAudioProcessorEditor::resized()
 
 void AutoFreezeAudioProcessorEditor::timerCallback()
 {
-    displayLevel = audioProcessor.getDbLevel();
+    displayDbLevel = juce::jlimit(minDisplayDbLevel, maxDisplayDbLevel, audioProcessor.getDbLevel());
     
     // Calculate meter level position
-    int meterLevelX = meterBoundsRect.getX();
-    int meterLevelY = meterBoundsRect.getY();
     int meterLevelWidth = meterBoundsRect.getWidth();
-    int meterLevelHeight = meterBoundsRect.getHeight();
+    int meterLevelHeight = juce::jmap(displayDbLevel, minDisplayDbLevel, maxDisplayDbLevel, 0.0f, meterBoundsRect.getHeight());
+    int meterLevelX = meterBoundsRect.getX();
+    int meterLevelY = meterBoundsRect.getBottom() - meterLevelHeight;
     meterLevelRect.setBounds(meterLevelX, meterLevelY, meterLevelWidth, meterLevelHeight);
     
     repaint();
 }
+

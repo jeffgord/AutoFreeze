@@ -26,14 +26,17 @@ public:
     void timerCallback() override;
 
 private:
+    static constexpr float minDisplayDbLevel = -60.0f;
+    static constexpr float maxDisplayDbLevel = 0.0f;
+    
     // This reference is provided as a quick way for your editor to
     // access the processor object that created it.
     AutoFreezeAudioProcessor& audioProcessor;
-    float displayLevel = 0.0f;
+    float displayDbLevel = minDisplayDbLevel;
     
     juce::Rectangle<float> levelTextRect;
     juce::Rectangle<float> meterBoundsRect;
     juce::Rectangle<float> meterLevelRect;
-
+    
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AutoFreezeAudioProcessorEditor)
 };
