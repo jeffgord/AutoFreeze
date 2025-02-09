@@ -15,8 +15,13 @@ AutoFreezeAudioProcessorEditor::AutoFreezeAudioProcessorEditor (AutoFreezeAudioP
 {
     // Make sure that before the constructor has finished, you've set the
     // editor's size to whatever you need it to be.
+    int fps = 30;
     setSize (400, 300);
-    startTimerHz(30); // refresh at 30 Hz
+    startTimerHz(fps);
+    
+    // Initialize the dbLevel smoothing
+    displayDbLevel.reset(fps, 0.3);
+    displayDbLevel.setCurrentAndTargetValue(minDisplayDbLevel);
 }
 
 AutoFreezeAudioProcessorEditor::~AutoFreezeAudioProcessorEditor()
@@ -32,7 +37,7 @@ void AutoFreezeAudioProcessorEditor::paint (juce::Graphics& g)
     // Add level text
     g.setColour(juce::Colours::wheat);
     g.setFont(juce::FontOptions (15.0f));
-    g.drawText(juce::String(displayDbLevel, 2), levelTextRect, juce::Justification::centred, 1);
+    g.drawText(juce::String(displayDbLevel.getCurrentValue(), 2), levelTextRect, juce::Justification::centred, 1);
     
     // Draw meter level
     g.setColour(juce::Colours::thistle);
@@ -66,11 +71,18 @@ void AutoFreezeAudioProcessorEditor::resized()
 
 void AutoFreezeAudioProcessorEditor::timerCallback()
 {
-    displayDbLevel = juce::jlimit(minDisplayDbLevel, maxDisplayDbLevel, audioProcessor.getDbLevel());
+    float currentDbLevel = audioProcessor.getDbLevel();
+    float limitedCurrentDbLevel = juce::jlimit(minDisplayDbLevel, maxDisplayDbLevel, currentDbLevel);
+    
+    if (limitedCurrentDbLevel > displayDbLevel.getNextValue()) {
+        displayDbLevel.setCurrentAndTargetValue(limitedCurrentDbLevel);
+    } else {
+        displayDbLevel.setTargetValue(limitedCurrentDbLevel);
+    }
     
     // Calculate meter level position
     int meterLevelWidth = meterBoundsRect.getWidth();
-    int meterLevelHeight = juce::jmap(displayDbLevel, minDisplayDbLevel, maxDisplayDbLevel, 0.0f, meterBoundsRect.getHeight());
+    int meterLevelHeight = juce::jmap(displayDbLevel.getNextValue(), minDisplayDbLevel, maxDisplayDbLevel, 0.0f, meterBoundsRect.getHeight());
     int meterLevelX = meterBoundsRect.getX();
     int meterLevelY = meterBoundsRect.getBottom() - meterLevelHeight;
     meterLevelRect.setBounds(meterLevelX, meterLevelY, meterLevelWidth, meterLevelHeight);

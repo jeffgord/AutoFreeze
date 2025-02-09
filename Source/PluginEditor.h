@@ -32,7 +32,7 @@ private:
     // This reference is provided as a quick way for your editor to
     // access the processor object that created it.
     AutoFreezeAudioProcessor& audioProcessor;
-    float displayDbLevel = minDisplayDbLevel;
+    juce::SmoothedValue<float> displayDbLevel;
     
     juce::Rectangle<float> levelTextRect;
     juce::Rectangle<float> meterBoundsRect;
