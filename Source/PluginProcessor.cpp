@@ -91,16 +91,70 @@ void AutoFreezeAudioProcessor::changeProgramName (int index, const juce::String&
 }
 
 //==============================================================================
+int roundToMultiple (int unRoundedNumber, int multiple)
+{
+    return static_cast<int>(std::round(static_cast<float>(unRoundedNumber) / multiple)) * multiple;
+}
+
+void generateFade (std::vector<float>& fade, bool fadeIn, int size)
+{
+    fade.resize(size);
+    
+    for (int i = 0; i < size; i++)
+    {
+        float x = static_cast<float>(i) / size * (M_PI / 2);
+        
+        if (fadeIn) fade[i] = std::sin(x);
+        else fade[i] = std::cos(x);
+    }
+}
+
 void AutoFreezeAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    // Use this method as the place to do any pre-playback
-    // initialisation that you need..
+    // freeze buffer
+    freezeBuffer.setSize(getTotalNumInputChannels(), freezeBufferLength);
+    freezeBuffer.clear();
+    freezeWindowingFunction = std::make_unique<juce::dsp::WindowingFunction<float>>(
+                samplesPerBlock, juce::dsp::WindowingFunction<float>::hann);
+    freezeBufferIndex = 0;
+    
+    // grains
+    grainTargetRms = 0.0f;
+    freezeMags.setSize(getTotalNumInputChannels(), freezeBufferLength);
+    
+    for (int i = 0; i < numGrains; i++)
+    {
+        auto& grain = grains[i];
+        grain.setSize(getTotalNumInputChannels(), freezeBufferLength);
+        grainIndices[i] = freezeBufferLength / 4 * i;
+    }
+    
+    // predelay
+    predelaySamples = roundToMultiple(predelaySeconds * sampleRate, samplesPerBlock);
+    predelayCounter = 0;
+    
+    // cooldown
+    cooldownSamples = roundToMultiple(cooldownSeconds * sampleRate, samplesPerBlock);
+    coolDownCounter = 0;
+    
+    // short fade
+    shortFadeSamples = roundToMultiple(shortFadeSeconds * sampleRate, samplesPerBlock);
+    generateFade(shortFadeIn, true, shortFadeSamples);
+    generateFade(shortFadeOut, false, shortFadeSamples);
+    shortFadeIndex = 0;
+    
+    // long fade
+    longFadeSamples = roundToMultiple(longFadeSeconds * sampleRate, samplesPerBlock);
+    generateFade(longFadeIn, true, longFadeSamples);
+    generateFade(longFadeOut, false, longFadeSamples);
+    longFadeIndex = 0;
 }
 
 void AutoFreezeAudioProcessor::releaseResources()
 {
     // When playback stops, you can use this as an opportunity to free up any
     // spare memory, etc.
+    freezeBuffer.setSize(0, 0);
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -159,7 +213,13 @@ void AutoFreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     
     float rms = sumRms / totalNumInputChannels;
     dbLevel = juce::Decibels::gainToDecibels(rms);
+    
+    if (isReadingFreeze) {
+        
+    }
 }
+
+
 
 //==============================================================================
 bool AutoFreezeAudioProcessor::hasEditor() const

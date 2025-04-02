@@ -54,12 +54,57 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
     
     //==============================================================================
-    float getDbLevel() const { return dbLevel; }
-
+    
 private:
     //==============================================================================
-    float dbLevel = 0.0f;
+    enum class AutoFreezeState
+    {
+        BelowThreshold,
+        Predelay,
+        ReadingFreeze,
+        Cooldown
+    };
     
+    // constants
+    static constexpr int freezeBufferLength = 16384; // = 2^14
+    static constexpr float freezeThresholdDb = -20.0f;
+    static constexpr int numGrains = 4;
+    static constexpr float predelaySeconds = 0.1f;
+    static constexpr float cooldownSeconds = 1.0f;
+    static constexpr float shortFadeSeconds = 0.05f;
+    static constexpr float longFadeSeconds = 0.1f;
+    
+    // freeze buffer
+    juce::AudioBuffer<float> freezeBuffer;
+    std::unique_ptr<juce::dsp::WindowingFunction<float>> freezeWindowingFunction;
+    int freezeBufferIndex;
+    
+    // grains
+    float grainTargetRms;
+    juce::AudioBuffer<float> freezeMags;
+    std::array<juce::AudioBuffer<float>, numGrains> grains;
+    std::array<int, numGrains> grainIndices;
+    
+    // predelay
+    int predelaySamples;
+    int predelayCounter;
+    
+    // cooldown
+    int cooldownSamples;
+    int coolDownCounter;
+    
+    // short fade
+    int shortFadeSamples;
+    std::vector<float> shortFadeIn;
+    std::vector<float> shortFadeOut;
+    int shortFadeIndex;
+    
+    // long fade
+    int longFadeSamples;
+    std::vector<float> longFadeIn;
+    std::vector<float> longFadeOut;
+    int longFadeIndex;
+        
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AutoFreezeAudioProcessor)
 };
