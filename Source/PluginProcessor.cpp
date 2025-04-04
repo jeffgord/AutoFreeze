@@ -112,21 +112,24 @@ void generateFade (std::vector<float>& fade, bool fadeIn, int size)
 void AutoFreezeAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     // freeze buffer
-    freezeBuffer.setSize(getTotalNumInputChannels(), freezeBufferLength);
+    freezeBuffer.setSize(getTotalNumInputChannels(), freezeBufferSamples);
     freezeBuffer.clear();
-    freezeWindowingFunction = std::make_unique<juce::dsp::WindowingFunction<float>>(
-                samplesPerBlock, juce::dsp::WindowingFunction<float>::hann);
+    juce::dsp::WindowingFunction<float> freezeWindowingFunction =
+        juce::dsp::WindowingFunction<float>(freezeBufferSamples, juce::dsp::WindowingFunction<float>::hann);
+    freezeWindow.resize(freezeBufferSamples);
+    std::fill(freezeWindow.begin(), freezeWindow.end(), 1.0f);
+    freezeWindowingFunction.multiplyWithWindowingTable(freezeWindow.data(), freezeBufferSamples);
     freezeBufferIndex = 0;
     
     // grains
     grainTargetRms = 0.0f;
-    freezeMags.setSize(getTotalNumInputChannels(), freezeBufferLength);
+    freezeMags.setSize(getTotalNumInputChannels(), freezeBufferSamples);
     
     for (int i = 0; i < numGrains; i++)
     {
         auto& grain = grains[i];
-        grain.setSize(getTotalNumInputChannels(), freezeBufferLength);
-        grainIndices[i] = freezeBufferLength / 4 * i;
+        grain.setSize(getTotalNumInputChannels(), freezeBufferSamples);
+        grainIndices[i] = freezeBufferSamples / 4 * i;
     }
     
     // predelay
@@ -204,22 +207,74 @@ void AutoFreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // the samples and the outer loop is handling the channels.
     // Alternatively, you can process the samples with the channels
     // interleaved by keeping the same state.
-    float sumRms = 0.0f;
-    
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
-    {
-        sumRms += buffer.getRMSLevel(channel, 0, buffer.getNumSamples());
-    }
-    
-    float rms = sumRms / totalNumInputChannels;
-    dbLevel = juce::Decibels::gainToDecibels(rms);
-    
-    if (isReadingFreeze) {
-        
-    }
+    updateState(buffer);
 }
 
+std::vector<float> getChannelsRms(const juce::AudioBuffer<float>& buffer) {
+    int numChannels = buffer.getNumChannels();
+    int numSamples = buffer.getNumSamples();
 
+    std::vector<float> channelsRms = std::vector<float>(numChannels);
+    
+    for (int channel = 0; channel < numChannels; channel++) {
+        channelsRms[channel] = buffer.getRMSLevel(channel, 0, numSamples);
+    }
+    
+    return channelsRms;
+}
+
+float getChannelAveragedRms(const juce::AudioBuffer<float>& buffer)
+{
+    float rmsSum = 0.0f;
+    std::vector<float> channelsRms = getChannelsRms(buffer);
+    
+    for (float channelRms : channelsRms)
+    {
+        rmsSum += channelRms;
+    }
+    
+    return rmsSum / buffer.getNumChannels();
+}
+
+void AutoFreezeAudioProcessor::updateState(juce::AudioBuffer<float>& buffer)
+{
+    switch(currentState)
+    {
+        case AutoFreezeState::BelowThreshold: {
+            float rms = getChannelAveragedRms(buffer);
+            float rmsDb = juce::Decibels::gainToDecibels(rms);
+            
+            if (rmsDb > freezeThresholdDb) {
+                currentState = AutoFreezeState::Predelay;
+                predelayCounter = 0;
+                shortFadeIndex = 0;
+            }
+            
+            break;
+        }
+        case AutoFreezeState::Predelay: {
+            if (predelayCounter >= predelaySamples) {
+                currentState = AutoFreezeState::ReadingFreeze;
+                freezeBufferIndex = 0;
+            }
+            
+            break;
+        }
+        case AutoFreezeState::ReadingFreeze:
+            if (freezeBufferIndex >= freezeBufferSamples) {
+                currentState = AutoFreezeState::Cooldown;
+                coolDownCounter = 0;
+                longFadeIndex = 0;
+                grainTargetsRms = getChannelsRms(buffer);
+                
+                // now, need to get magnitude spectrum
+            }
+            
+            break;
+        case AutoFreezeState::Cooldown:
+            break;
+    }
+}
 
 //==============================================================================
 bool AutoFreezeAudioProcessor::hasEditor() const

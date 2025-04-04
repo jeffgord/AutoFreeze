@@ -12,7 +12,16 @@
 
 //==============================================================================
 /**
+ 
 */
+enum class AutoFreezeState
+{
+    BelowThreshold,
+    Predelay,
+    ReadingFreeze,
+    Cooldown
+};
+
 class AutoFreezeAudioProcessor  : public juce::AudioProcessor
 {
 public:
@@ -54,19 +63,12 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
     
     //==============================================================================
-    
+    void updateState (juce::AudioBuffer<float>&);
+
 private:
     //==============================================================================
-    enum class AutoFreezeState
-    {
-        BelowThreshold,
-        Predelay,
-        ReadingFreeze,
-        Cooldown
-    };
-    
     // constants
-    static constexpr int freezeBufferLength = 16384; // = 2^14
+    static constexpr int freezeBufferSamples = 16384; // = 2^14
     static constexpr float freezeThresholdDb = -20.0f;
     static constexpr int numGrains = 4;
     static constexpr float predelaySeconds = 0.1f;
@@ -74,13 +76,15 @@ private:
     static constexpr float shortFadeSeconds = 0.05f;
     static constexpr float longFadeSeconds = 0.1f;
     
+    AutoFreezeState currentState;
+    
     // freeze buffer
     juce::AudioBuffer<float> freezeBuffer;
-    std::unique_ptr<juce::dsp::WindowingFunction<float>> freezeWindowingFunction;
+    std::vector<float> freezeWindow;
     int freezeBufferIndex;
     
     // grains
-    float grainTargetRms;
+    std::vector<float> grainTargetsRms;
     juce::AudioBuffer<float> freezeMags;
     std::array<juce::AudioBuffer<float>, numGrains> grains;
     std::array<int, numGrains> grainIndices;
