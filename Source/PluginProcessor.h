@@ -64,6 +64,8 @@ public:
     
     //==============================================================================
     void updateState (juce::AudioBuffer<float>&);
+    juce::AudioBuffer<float> getMagnitudes(const juce::AudioBuffer<float>& buffer);
+
 
 private:
     //==============================================================================

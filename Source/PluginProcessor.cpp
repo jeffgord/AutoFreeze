@@ -111,8 +111,10 @@ void generateFade (std::vector<float>& fade, bool fadeIn, int size)
 
 void AutoFreezeAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    const int channels = getTotalNumInputChannels();
+    
     // freeze buffer
-    freezeBuffer.setSize(getTotalNumInputChannels(), freezeBufferSamples);
+    freezeBuffer.setSize(channels, freezeBufferSamples);
     freezeBuffer.clear();
     juce::dsp::WindowingFunction<float> freezeWindowingFunction =
         juce::dsp::WindowingFunction<float>(freezeBufferSamples, juce::dsp::WindowingFunction<float>::hann);
@@ -122,13 +124,14 @@ void AutoFreezeAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     freezeBufferIndex = 0;
     
     // grains
-    grainTargetRms = 0.0f;
-    freezeMags.setSize(getTotalNumInputChannels(), freezeBufferSamples);
+    grainTargetsRms.resize(channels);
+    std::fill(grainTargetsRms.begin(), grainTargetsRms.end(), 0.0f);
+    freezeMags.setSize(channels, freezeBufferSamples);
     
     for (int i = 0; i < numGrains; i++)
     {
         auto& grain = grains[i];
-        grain.setSize(getTotalNumInputChannels(), freezeBufferSamples);
+        grain.setSize(channels, freezeBufferSamples);
         grainIndices[i] = freezeBufferSamples / 4 * i;
     }
     
@@ -236,6 +239,39 @@ float getChannelAveragedRms(const juce::AudioBuffer<float>& buffer)
     return rmsSum / buffer.getNumChannels();
 }
 
+juce::AudioBuffer<float> AutoFreezeAudioProcessor::getMagnitudes(const juce::AudioBuffer<float>& buffer)
+{
+    if (buffer.getNumSamples() != freezeBufferSamples) {
+        throw std::runtime_error("Freeze buffer has unexpected length");
+    }
+    
+    int numChannels = buffer.getNumChannels();
+    juce::AudioBuffer<float> mags(numChannels, freezeBufferSamples);
+    juce::dsp::FFT fft(std::log2(freezeBufferSamples));
+    
+    for (int channel = 0; channel < buffer.getNumChannels(); channel++)
+    {
+        std::vector<float> fftData(freezeBufferSamples * 2);
+        std::fill(fftData.begin(), fftData.end(), 0.0f);
+        
+        const float* channelFreezeData = buffer.getReadPointer(0);
+        for (int sample = 0; sample < freezeBufferSamples; sample++)
+            fftData[sample] = channelFreezeData[sample];
+        
+        fft.performRealOnlyForwardTransform(fftData.data(), true);
+        
+        float* channelMagData = mags.getWritePointer(0);
+        for (int sample = 0; sample < freezeBufferSamples; sample++)
+        {
+            const float real = fftData[sample * 2];
+            const float im = fftData[sample * 2 + 1];
+            channelMagData[sample] = std::sqrt(real * real + im * im);
+        }
+    }
+    
+    return mags;
+}
+
 void AutoFreezeAudioProcessor::updateState(juce::AudioBuffer<float>& buffer)
 {
     switch(currentState)
@@ -267,7 +303,7 @@ void AutoFreezeAudioProcessor::updateState(juce::AudioBuffer<float>& buffer)
                 longFadeIndex = 0;
                 grainTargetsRms = getChannelsRms(buffer);
                 
-                // now, need to get magnitude spectrum
+                freezeMags = getMagnitudes(freezeBuffer);
             }
             
             break;
