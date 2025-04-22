@@ -64,7 +64,13 @@ public:
     
     //==============================================================================
     void updateState (juce::AudioBuffer<float>&);
+    void readIntoGrain(int grainNum);
     juce::AudioBuffer<float> getMagnitudes(const juce::AudioBuffer<float>& buffer);
+    juce::AudioBuffer<float> readFreeze(int numChannels, int blockSize);
+    void processBelowThreshold(juce::AudioBuffer<float>&);
+    void processPredelay(juce::AudioBuffer<float>&);
+    void processReadingFreeze(juce::AudioBuffer<float>&);
+    void processCooldown(juce::AudioBuffer<float>&);
 
 
 private:
@@ -87,6 +93,7 @@ private:
     
     // grains
     std::vector<float> grainTargetsRms;
+    juce::dsp::FFT freezeFft{freezeBufferSamples};
     juce::AudioBuffer<float> freezeMags;
     std::array<juce::AudioBuffer<float>, numGrains> grains;
     std::array<int, numGrains> grainIndices;
