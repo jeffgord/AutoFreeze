@@ -431,7 +431,6 @@ void AutoFreezeAudioProcessor::processBelowThreshold(juce::AudioBuffer<float>& b
 
 void AutoFreezeAudioProcessor::processPredelay(juce::AudioBuffer<float>& buffer)
 {
-    predelayCounter += buffer.getNumSamples();
     juce::AudioBuffer<float> freeze = readFreeze(buffer.getNumChannels(), buffer.getNumSamples());
     
     for (int channel = 0; channel < buffer.getNumChannels(); channel++)
@@ -449,23 +448,63 @@ void AutoFreezeAudioProcessor::processPredelay(juce::AudioBuffer<float>& buffer)
                 fade_in_factor = shortFadeIn[shortFadeIndex];
                 fade_out_factor = shortFadeOut[shortFadeIndex];
             }
-            
-            shortFadeIndex++;
-            
+                        
             float faded_in_dry = bufferChannelData[sample] * fade_in_factor;
             float faded_out_wet = freezeChannelData[sample] * fade_out_factor;
             
             bufferChannelData[sample] = faded_in_dry + faded_out_wet;
+            
         }
     }
+    
+    predelayCounter += buffer.getNumSamples();
+    shortFadeIndex += buffer.getNumSamples();
 }
 
 void AutoFreezeAudioProcessor::processReadingFreeze(juce::AudioBuffer<float>& buffer)
 {
+    for (int channel = 0; channel < buffer.getNumChannels(); channel++) {
+        const float* bufferChannelData = buffer.getReadPointer(channel);
+        float* freezeChannelData = freezeBuffer.getWritePointer(channel);
+        
+        for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
+            float windowedSample = bufferChannelData[sample] * freezeWindow[freezeBufferIndex];
+            freezeChannelData[freezeBufferIndex] = windowedSample;
+            freezeBufferIndex++;
+        }
+    }
 }
 
 void AutoFreezeAudioProcessor::processCooldown(juce::AudioBuffer<float>& buffer)
 {
+    juce::AudioBuffer<float> freeze = readFreeze(buffer.getNumChannels(), buffer.getNumSamples());
+    
+    for (int channel = 0; channel < buffer.getNumChannels(); channel++)
+    {
+        float* bufferChannelData = buffer.getWritePointer(channel);
+        const float* freezeChannelData = freeze.getReadPointer(channel);
+        
+        for (int sample = 0; sample < buffer.getNumSamples(); sample++)
+        {
+            float fade_in_factor = 1;
+            float fade_out_factor = 0;
+            
+            if (longFadeIndex < shortFadeSamples)
+            {
+                fade_in_factor = longFadeIn[longFadeIndex];
+                fade_out_factor = longFadeOut[longFadeIndex];
+            }
+                        
+            float faded_in_wet = freezeChannelData[sample] * fade_in_factor;
+            float faded_out_dry = bufferChannelData[sample] * fade_out_factor;
+            
+            bufferChannelData[sample] = faded_in_wet + faded_out_dry;
+            
+        }
+    }
+    
+    coolDownCounter += buffer.getNumSamples();
+    longFadeIndex += buffer.getNumSamples();
 }
 
 //==============================================================================
