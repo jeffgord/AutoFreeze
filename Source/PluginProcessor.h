@@ -63,6 +63,7 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
     
     //==============================================================================
+    float getDbLevel () { return dbLevel; };
     void updateState (juce::AudioBuffer<float>&);
     void readIntoGrain(int grainNum);
     juce::AudioBuffer<float> getMagnitudes(const juce::AudioBuffer<float>& buffer);
@@ -75,6 +76,7 @@ public:
 
 private:
     //==============================================================================
+    
     // constants
     static constexpr int freezeBufferSamples = 16384; // = 2^14
     static constexpr float freezeThresholdDb = -20.0f;
@@ -85,6 +87,8 @@ private:
     static constexpr float longFadeSeconds = 0.1f;
     
     AutoFreezeState currentState;
+    
+    float dbLevel;
     
     // freeze buffer
     juce::AudioBuffer<float> freezeBuffer;

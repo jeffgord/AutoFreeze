@@ -226,6 +226,15 @@ void AutoFreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             processCooldown(buffer);
             break;
     }
+    
+    float channelTotalRms = 0.0f;
+    
+    for (int channel = 0; channel < buffer.getNumChannels(); channel++) {
+        channelTotalRms += buffer.getRMSLevel(channel, 0, buffer.getNumSamples());
+    }
+    
+    float averageRms = channelTotalRms / buffer.getNumChannels();
+    dbLevel = juce::Decibels::gainToDecibels(averageRms);
 }
 
 std::vector<float> getChannelsRms(const juce::AudioBuffer<float>& buffer) {
