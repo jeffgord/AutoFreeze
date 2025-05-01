@@ -78,7 +78,8 @@ private:
     //==============================================================================
     
     // constants
-    static constexpr int freezeBufferSamples = 16384; // = 2^14
+    static constexpr int freezeOrder = 14;
+    static constexpr int freezeBufferSamples = 1 << freezeOrder; // = 2^14
     static constexpr float freezeThresholdDb = -20.0f;
     static constexpr int numGrains = 4;
     static constexpr float predelaySeconds = 0.1f;
@@ -97,7 +98,7 @@ private:
     
     // grains
     std::vector<float> grainTargetsRms;
-    juce::dsp::FFT freezeFft{freezeBufferSamples};
+    juce::dsp::FFT freezeFft{freezeOrder};
     juce::AudioBuffer<float> freezeMags;
     std::array<juce::AudioBuffer<float>, numGrains> grains;
     std::array<int, numGrains> grainIndices;
