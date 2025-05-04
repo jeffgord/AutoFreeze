@@ -208,7 +208,7 @@ void AutoFreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // this code if your algorithm always overwrites all the output channels.
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
-
+    
     // This is the place where you'd normally do the guts of your plugin's
     // audio processing...
     // Make sure to reset the state if your inner loop is processing
@@ -238,7 +238,9 @@ void AutoFreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             break;
     }
     
-    DBG(stateString);
+    //DBG(stateString);
+    
+    //fftTest(buffer);
     
     // idk, maybe could try just doing FFT and then inverse FFT of the buffer for testing to confirm that FFT is working correctly
     
@@ -258,6 +260,59 @@ void AutoFreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     //DBG("block time: " + std::to_string(blockTime) + "   processingTime: " + std::to_string(processingTime));
     if (blockTime < processingTime)
         DBG("could not process block in time");
+}
+
+void AutoFreezeAudioProcessor::fftTest(juce::AudioBuffer<float>& buffer) {
+    juce::AudioBuffer<float> newBuffer(buffer.getNumChannels(), buffer.getNumSamples());
+    newBuffer.clear();
+    int fftOrder = std::log2(buffer.getNumSamples());
+    juce::dsp::FFT fft(fftOrder);
+    
+    for (int channel = 0; channel < buffer.getNumChannels(); channel++) {
+        std::vector<float> channelFftData(2 * buffer.getNumSamples(), 0.0f);
+        const float* channelBufferData = buffer.getReadPointer(channel);
+        
+        for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
+            channelFftData[sample] = channelBufferData[sample];
+        }
+        
+        fft.performRealOnlyForwardTransform(channelFftData.data());
+        
+        std::vector<float> magnitudes(buffer.getNumSamples());
+        std::vector<float> phases(buffer.getNumSamples());
+        
+        for (int bin = 0; bin < buffer.getNumSamples(); bin++) {
+            float real = channelFftData[bin * 2];
+            float imag = channelFftData[bin * 2 + 1];
+            std::complex<float> z(real, imag);
+            
+            magnitudes[bin] = std::abs(z);
+            phases[bin] = std::arg(z);
+        }
+        
+        std::vector<float> channelIfftData(2 * buffer.getNumSamples(), 0.0f);
+        
+        channelIfftData[0] = magnitudes[0];
+        channelIfftData[1] = 0.0f;
+        
+        for (int bin = 1; bin < buffer.getNumSamples(); bin++) {
+            float real = magnitudes[bin] * std::cos(phases[bin]);
+            float imag = magnitudes[bin] * std::sin(phases[bin]);
+            channelIfftData[bin * 2] = real;
+            channelIfftData[bin * 2 + 1] = imag;
+        }
+        
+        fft.performRealOnlyInverseTransform(channelIfftData.data());
+        float *channelNewBuffer = newBuffer.getWritePointer(channel);
+        
+        for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
+            channelNewBuffer[sample] = channelIfftData[sample];
+        }
+    }
+    
+    for (int channel = 0; channel < newBuffer.getNumChannels(); ++channel) {
+        buffer.copyFrom(channel, 0, newBuffer, channel, 0, newBuffer.getNumSamples());
+    }
 }
 
 std::vector<float> getChannelsRms(const juce::AudioBuffer<float>& buffer) {
@@ -286,34 +341,25 @@ float getChannelAveragedRms(const juce::AudioBuffer<float>& buffer)
     return rmsSum / buffer.getNumChannels();
 }
 
-juce::AudioBuffer<float> AutoFreezeAudioProcessor::getMagnitudes(const juce::AudioBuffer<float>& buffer)
+void AutoFreezeAudioProcessor::calculateFreezeMagnitudes()
 {
-    if (buffer.getNumSamples() != freezeBufferSamples) {
-        throw std::runtime_error("Freeze buffer has unexpected length");
-    }
-    
-    int numChannels = buffer.getNumChannels();
-    juce::AudioBuffer<float> mags(numChannels, freezeBufferSamples);
-    
-    for (int channel = 0; channel < numChannels; channel++)
+    for (int channel = 0; channel < freezeBuffer.getNumChannels(); channel++)
     {
         std::vector<float> fftData(freezeBufferSamples * 2, 0.0f);
         
-        const float* channelFreezeData = buffer.getReadPointer(0);
+        const float* channelFreezeData = freezeBuffer.getReadPointer(0);
         for (int sample = 0; sample < freezeBufferSamples; sample++) {
             fftData[sample] = channelFreezeData[sample] * freezeWindow[sample];
         }
         
         freezeFft.performFrequencyOnlyForwardTransform(fftData.data(), true);
         
-        float* channelMagData = mags.getWritePointer(channel);
+        float* channelMagData = freezeMags.getWritePointer(channel);
         for (int sample = 0; sample < freezeBufferSamples; sample++)
         {
             channelMagData[sample] = fftData[sample];
         }
     }
-    
-    return mags;
 }
 
 void AutoFreezeAudioProcessor::readIntoGrain(int grainNum)
@@ -323,10 +369,10 @@ void AutoFreezeAudioProcessor::readIntoGrain(int grainNum)
         throw std::runtime_error("Cannot read into non-existent grain");
     }
     
-    std::vector<float> randomPhases(freezeBufferSamples / 2);
+    std::vector<float> randomPhases(freezeBufferSamples);
     juce::Random random;
     
-    for (int sample = 0; sample < freezeBufferSamples / 2; sample++)
+    for (int sample = 0; sample < freezeBufferSamples; sample++)
     {
         randomPhases[sample] = random.nextFloat() * juce::MathConstants<float>::twoPi;
     }
@@ -340,7 +386,7 @@ void AutoFreezeAudioProcessor::readIntoGrain(int grainNum)
         ifftData[0] = magData[0];
         ifftData[1] = 0.0f;
         
-        for (int bin = 1; bin < freezeBufferSamples / 2; bin++) {
+        for (int bin = 1; bin < freezeBufferSamples; bin++) {
             float real = magData[bin] * std::cos(randomPhases[bin]);
             float imag = magData[bin] * std::sin(randomPhases[bin]);
             ifftData[bin * 2] = real;
@@ -388,8 +434,7 @@ void AutoFreezeAudioProcessor::updateState(juce::AudioBuffer<float>& buffer)
                 coolDownCounter = 0;
                 longFadeIndex = 0;
                 grainTargetsRms = getChannelsRms(buffer);
-                
-                freezeMags = getMagnitudes(freezeBuffer);
+                calculateFreezeMagnitudes();
                 
                 for (int i = 0; i < numGrains; i ++) {
                     readIntoGrain(i);
@@ -411,39 +456,40 @@ juce::AudioBuffer<float> AutoFreezeAudioProcessor::readFreeze(int numChannels, i
 {
     juce::AudioBuffer<float> buffer(numChannels, blockSize);
     buffer.clear();
-    
-    // re-read freeze into grains that have been fully read from
-    for (int grainNum = 0; grainNum < numGrains; grainNum++)
-    {
-        if (grainIndices[grainNum] == freezeBufferSamples) {
-            readIntoGrain(grainNum);
-            grainIndices[grainNum] = 0;
-        }
-    }
+
      
     // overlap-add grains into the buffer
-    for (int channel = 0; channel < buffer.getNumChannels(); channel++)
-    {
-        float* channelData = buffer.getWritePointer(channel);
+    for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
+        // re-read freeze into grains that have been fully read from
+        for (int grainNum = 0; grainNum < numGrains; grainNum++)
+        {
+            if (grainIndices[grainNum] >= freezeBufferSamples) {
+                readIntoGrain(grainNum);
+                grainIndices[grainNum] = 0;
+            }
+        }
         
-        for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
+        for (int channel = 0; channel < buffer.getNumChannels(); channel++) {
             float windowSum = 0.0f;
+            float* channelData = buffer.getWritePointer(channel);
             
-            for (int grainNum = 0; grainNum < numGrains; grainNum++)
-            {
-                const float* grainData = grains[grainNum].getReadPointer(channel);
-                int* pGrainIndex = &grainIndices[grainNum];
-                float windowValue = freezeWindow[*pGrainIndex];
-                channelData[sample] += grainData[*pGrainIndex] * windowValue;
+            for (int grainNum = 0; grainNum < numGrains; grainNum++) {
+                const float* grainChannelData = grains[grainNum].getReadPointer(channel);
+                int grainIndex = grainIndices[grainNum];
+                float windowValue = freezeWindow[grainIndex];
+                
+                channelData[sample] += grainChannelData[grainIndex] * windowValue;
                 windowSum += windowValue;
-                (*pGrainIndex)++;
             }
             
             if (windowSum != 0.0f)
             {
-                if (windowSum < 3.9999 || windowSum > 4.0001) DBG(windowSum);
                 channelData[sample] /= windowSum;
             }
+        }
+        
+        for (int grainNum = 0; grainNum < numGrains; grainNum++) {
+            grainIndices[grainNum]++;
         }
     }
     
@@ -456,13 +502,7 @@ void AutoFreezeAudioProcessor::processBelowThreshold(juce::AudioBuffer<float>& b
         
     for (int channel = 0; channel < buffer.getNumChannels(); channel++)
     {
-        const float* freezeChannelData = freeze.getReadPointer(channel);
-        float* bufferChannelData = buffer.getWritePointer(channel);
-                
-        for (int sample = 0; sample < freeze.getNumSamples(); sample++)
-        {
-            bufferChannelData[sample] = freezeChannelData[sample];
-        }
+        buffer.copyFrom(channel, 0, freeze, channel, 0, buffer.getNumSamples());
     }
 }
 
@@ -501,15 +541,10 @@ void AutoFreezeAudioProcessor::processPredelay(juce::AudioBuffer<float>& buffer)
 void AutoFreezeAudioProcessor::processReadingFreeze(juce::AudioBuffer<float>& buffer)
 {
     for (int channel = 0; channel < buffer.getNumChannels(); channel++) {
-        const float* bufferChannelData = buffer.getReadPointer(channel);
-        float* freezeChannelData = freezeBuffer.getWritePointer(channel);
-        
-        for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
-            freezeChannelData[freezeBufferIndex + sample] = bufferChannelData[sample];
-        }
-        
-        freezeBufferIndex += buffer.getNumSamples();
+        freezeBuffer.copyFrom(channel, freezeBufferIndex, buffer, channel, 0, buffer.getNumSamples());
     }
+    
+    freezeBufferIndex += buffer.getNumSamples();
 }
 
 void AutoFreezeAudioProcessor::processCooldown(juce::AudioBuffer<float>& buffer)

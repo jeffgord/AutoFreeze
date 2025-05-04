@@ -66,12 +66,14 @@ public:
     float getDbLevel () { return dbLevel; };
     void updateState (juce::AudioBuffer<float>&);
     void readIntoGrain(int grainNum);
-    juce::AudioBuffer<float> getMagnitudes(const juce::AudioBuffer<float>& buffer);
+    void calculateFreezeMagnitudes();
     juce::AudioBuffer<float> readFreeze(int numChannels, int blockSize);
     void processBelowThreshold(juce::AudioBuffer<float>&);
     void processPredelay(juce::AudioBuffer<float>&);
     void processReadingFreeze(juce::AudioBuffer<float>&);
     void processCooldown(juce::AudioBuffer<float>&);
+    
+    void fftTest(juce::AudioBuffer<float>&);
 
 
 private:
