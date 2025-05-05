@@ -240,10 +240,6 @@ void AutoFreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     
     //DBG(stateString);
     
-    //fftTest(buffer);
-    
-    // idk, maybe could try just doing FFT and then inverse FFT of the buffer for testing to confirm that FFT is working correctly
-    
     float channelTotalRms = 0.0f;
     
     for (int channel = 0; channel < buffer.getNumChannels(); channel++) {
@@ -257,62 +253,8 @@ void AutoFreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     double processingTime = endTime - startTime;
     double blockTime = buffer.getNumSamples() / getSampleRate() * 1000;
     
-    //DBG("block time: " + std::to_string(blockTime) + "   processingTime: " + std::to_string(processingTime));
     if (blockTime < processingTime)
         DBG("could not process block in time");
-}
-
-void AutoFreezeAudioProcessor::fftTest(juce::AudioBuffer<float>& buffer) {
-    juce::AudioBuffer<float> newBuffer(buffer.getNumChannels(), buffer.getNumSamples());
-    newBuffer.clear();
-    int fftOrder = std::log2(buffer.getNumSamples());
-    juce::dsp::FFT fft(fftOrder);
-    
-    for (int channel = 0; channel < buffer.getNumChannels(); channel++) {
-        std::vector<float> channelFftData(2 * buffer.getNumSamples(), 0.0f);
-        const float* channelBufferData = buffer.getReadPointer(channel);
-        
-        for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
-            channelFftData[sample] = channelBufferData[sample];
-        }
-        
-        fft.performRealOnlyForwardTransform(channelFftData.data());
-        
-        std::vector<float> magnitudes(buffer.getNumSamples());
-        std::vector<float> phases(buffer.getNumSamples());
-        
-        for (int bin = 0; bin < buffer.getNumSamples(); bin++) {
-            float real = channelFftData[bin * 2];
-            float imag = channelFftData[bin * 2 + 1];
-            std::complex<float> z(real, imag);
-            
-            magnitudes[bin] = std::abs(z);
-            phases[bin] = std::arg(z);
-        }
-        
-        std::vector<float> channelIfftData(2 * buffer.getNumSamples(), 0.0f);
-        
-        channelIfftData[0] = magnitudes[0];
-        channelIfftData[1] = 0.0f;
-        
-        for (int bin = 1; bin < buffer.getNumSamples(); bin++) {
-            float real = magnitudes[bin] * std::cos(phases[bin]);
-            float imag = magnitudes[bin] * std::sin(phases[bin]);
-            channelIfftData[bin * 2] = real;
-            channelIfftData[bin * 2 + 1] = imag;
-        }
-        
-        fft.performRealOnlyInverseTransform(channelIfftData.data());
-        float *channelNewBuffer = newBuffer.getWritePointer(channel);
-        
-        for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
-            channelNewBuffer[sample] = channelIfftData[sample];
-        }
-    }
-    
-    for (int channel = 0; channel < newBuffer.getNumChannels(); ++channel) {
-        buffer.copyFrom(channel, 0, newBuffer, channel, 0, newBuffer.getNumSamples());
-    }
 }
 
 std::vector<float> getChannelsRms(const juce::AudioBuffer<float>& buffer) {
@@ -369,24 +311,26 @@ void AutoFreezeAudioProcessor::readIntoGrain(int grainNum)
         throw std::runtime_error("Cannot read into non-existent grain");
     }
     
-    std::vector<float> randomPhases(freezeBufferSamples);
+    std::vector<float> randomPhases(freezeBufferSamples / 2);
     juce::Random random;
     
-    for (int sample = 0; sample < freezeBufferSamples; sample++)
+    for (int sample = 0; sample < freezeBufferSamples / 2; sample++)
     {
         randomPhases[sample] = random.nextFloat() * juce::MathConstants<float>::twoPi;
     }
     
     for (int channel = 0; channel < freezeBuffer.getNumChannels(); channel++)
     {
-        std::vector<float> ifftData(2 * freezeBufferSamples);
+        std::vector<float> ifftData(2 * freezeBufferSamples, 0.0f);
         const float* magData = freezeMags.getReadPointer(channel);
                 
-        // DC handling
+        // DC & Nyquist handling
         ifftData[0] = magData[0];
         ifftData[1] = 0.0f;
+        ifftData[freezeBufferSamples] = magData[freezeBufferSamples / 2];
+        ifftData[freezeBufferSamples] = 0.0f;
         
-        for (int bin = 1; bin < freezeBufferSamples; bin++) {
+        for (int bin = 1; bin < freezeBufferSamples / 2; bin++) {
             float real = magData[bin] * std::cos(randomPhases[bin]);
             float imag = magData[bin] * std::sin(randomPhases[bin]);
             ifftData[bin * 2] = real;
@@ -396,11 +340,7 @@ void AutoFreezeAudioProcessor::readIntoGrain(int grainNum)
         freezeFft.performRealOnlyInverseTransform(ifftData.data());
         
         float* grainChannelData = grains[grainNum].getWritePointer(channel);
-        
-        for (int sample = 0; sample < freezeBufferSamples; sample++)
-        {
-            grainChannelData[sample] = ifftData[sample];
-        }
+        std::memcpy(grainChannelData, ifftData.data(), freezeBufferSamples * sizeof(float));
     }
 }
 
@@ -522,8 +462,8 @@ void AutoFreezeAudioProcessor::processPredelay(juce::AudioBuffer<float>& buffer)
             
             if (shortFadeIndex < shortFadeSamples)
             {
-                fade_in_factor = shortFadeIn[shortFadeIndex];
-                fade_out_factor = shortFadeOut[shortFadeIndex];
+                fade_in_factor = shortFadeIn[shortFadeIndex + sample];
+                fade_out_factor = shortFadeOut[shortFadeIndex + sample];
             }
                         
             float faded_in_dry = bufferChannelData[sample] * fade_in_factor;
@@ -563,8 +503,8 @@ void AutoFreezeAudioProcessor::processCooldown(juce::AudioBuffer<float>& buffer)
             
             if (longFadeIndex < shortFadeSamples)
             {
-                fade_in_factor = longFadeIn[longFadeIndex];
-                fade_out_factor = longFadeOut[longFadeIndex];
+                fade_in_factor = longFadeIn[longFadeIndex + sample];
+                fade_out_factor = longFadeOut[longFadeIndex + sample];
             }
                         
             float faded_in_wet = freezeChannelData[sample] * fade_in_factor;
